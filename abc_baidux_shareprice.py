@@ -1,7 +1,9 @@
 import pandas as pd
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import r2_score
+import numpy as np
+import matplotlib.pyplot as plt
+
 
 # Load and prepare data
 close_price = pd.read_excel('abc_close_price.xlsx', index_col='Date', parse_dates=True)
@@ -18,6 +20,32 @@ def create_lagged_rolling(df, column, lags, window=30):
     # Combine all lagged features
     lagged_features = pd.concat(lagged_dfs, axis=1).dropna()
     return lagged_features
+
+
+def mean_directional_accuracy(y_true, y_pred):
+    # Calculate the direction of change for both actual and predicted values
+    true_direction = np.sign(np.diff(y_true))
+    pred_direction = np.sign(np.diff(y_pred))
+
+    # Compare the direction of changes between actual and predicted
+    accuracy = np.mean(true_direction == pred_direction) * 100
+    return accuracy
+
+
+def plot_predictions(y_test, y_predict, future_predictions=None, future_dates=None):
+    plt.figure(figsize=(12, 6))
+    # plt.plot(df.index, y, label='Actual Close Price')
+    plt.plot(y_test.index, y_predict, label='Test Predictions', linestyle='--')
+    plt.plot(y_test.index, y_test, label='Actual Prices')
+    if future_dates != None:
+        plt.plot(future_dates, future_predictions, label='Future Predictions (Next 90 Days)', linestyle='--', color='red')
+        plt.title('Actual, Test, and Future Predictions for the Next 90 Days')
+    plt.xlabel('Date')
+    plt.ylabel('Stock Price')
+    plt.title('Actual, Test Predictions')
+    plt.legend()
+    plt.show()
+
 
 # Define lag periods and create lagged columns for training
 lags = [90, 120, 150, 180, 210]
@@ -37,9 +65,14 @@ model.fit(X_train, y_train)
 
 # Predict on test set and calculate R-squared score
 y_predict = model.predict(X_test)
-r_square = r2_score(y_test, y_predict)
-print(f'R-squared: {r_square:.4f}')
 
+mda = mean_directional_accuracy(y_test, y_predict)
+print(f'Mean Directional Accuracy: {mda:.2f}')
+# 一直在试不同的Metrics, 包括MSPE, RMSE， MAPE，但视觉上更佳的[90, 120, 150, 180, 210]组合始终达不到最优结果
+# 可能是因为尽管该组合对方向判断比较准确，但与真实数据一直保持距离，所以比不过那些对trend不敏感但始终处于真实数据附近的metrics
+# TODO: 找到一个最合适的metrics 对结果衡量
+
+plot_predictions(y_test, y_predict)
 # -----------------------------------------------
 # Step 2: Prepare data for future predictions
 
@@ -63,20 +96,4 @@ future_features = future_features[[f'{lag}days_lag' for lag in lags]]
 # Predict future stock prices
 future_predictions = model.predict(future_features)
 
-# Print future predictions
-print("Future Predictions for the next 90 days:")
-print(future_predictions)
-
-# Optional: Plot the actual, test, and future predictions
-import matplotlib.pyplot as plt
-
-plt.figure(figsize=(12, 6))
-# plt.plot(df.index, y, label='Actual Close Price')
-plt.plot(y_test.index, y_predict, label='Test Predictions', linestyle='--')
-plt.plot(y_test.index, y_test, label='Actual Prices')
-plt.plot(future_dates, future_predictions, label='Future Predictions (Next 90 Days)', linestyle='--', color='red')
-plt.xlabel('Date')
-plt.ylabel('Stock Price')
-plt.title('Actual, Test, and Future Predictions for the Next 90 Days')
-plt.legend()
-plt.show()
+plot_predictions(y_test, y_predict, future_dates, future_predictions)
